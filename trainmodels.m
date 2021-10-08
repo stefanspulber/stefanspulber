@@ -1,6 +1,6 @@
 %% train and test multiple regression model 
 clc, tic, disp('Working...')
-varidx=[4 7 9 11:21];
+varidx=[4 7 9 11:21]; % specifiy selection of variables; to include all: [4 7:21]
 for idx=1:6
 %     mdl=stepwiselm(train, 'ResponseVar', 'madrs1', 'PredictorVars', varidx, 'Criterion', 'sse', 'PEnter', 0.09,'NSteps', idx, 'Lower', 'constant', 'Upper', 'linear', 'Verbose', 0);
     mdl=stepwiselm(train, 'ResponseVar', 'madrs1', 'PredictorVars', varidx, 'Criterion', 'aic', 'NSteps', idx, 'Lower', 'constant', 'Upper', 'linear', 'Verbose', 0);
