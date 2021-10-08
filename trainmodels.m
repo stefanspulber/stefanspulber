@@ -183,63 +183,65 @@ legend({'trained', 'tested'});
 set(gca, 'ylim', [0 1]); xlim([0 8])
 ylabel 'adjRsquare'; xlabel 'RMSE'
 
-%% train and test multiple regression model with restricted number of predictors
-clc, clear mdlh, tic, disp('Working...')
-varidx=[4 7 9 11:21]; % set of vars to consider for modelling
-varsel=nchoosek(1:length(varidx), 1); % all possible combination of 3 vars
+%% brute force approach: train and test multiple regression model with restricted number of predictors
+clc, tic, disp('Working...')
+mdlh=struct('varsin', [], 'weights', [], 'train', [], 'performance', [], 'vif', [], 'test', [], 'testp', [], 'tvif', [], 'precision', []); % initialize output structure
+
+varidx=[4 7:21]; % set of vars to consider for modelling; includes age and circadian period
+
+for nidx=1:6 % limit to 6 predictors
+varsel=nchoosek(1:length(varidx), nidx); % all possible combination of n vars
 prg=waitbar(0, 'Working...');
+
 for idx=1:length(varsel)
     waitbar(idx/length(varsel), prg);
     mdl=fitlm(train, 'ResponseVar', 'madrs1', 'PredictorVars', varidx(varsel(idx, :)));
     
     % collect info on trained model
-    mdlh(idx).varsin=mdl.PredictorNames; 
-    mdlh(idx).weights=mdl.Coefficients;
-    mdlh(idx).train=[train.madrs1 mdl.Fitted]; 
-    mdlh(idx).performance=[mdl.Rsquared.Adjusted mdl.RMSE];
+    mdlh(end+1).varsin=mdl.PredictorNames; 
+    mdlh(end).weights=mdl.Coefficients;
+    mdlh(end).train=[train.madrs1 mdl.Fitted]; 
+    mdlh(end).performance=[mdl.Rsquared.Adjusted mdl.RMSE];
     r0=corrcoef(table2array(train(:, mdl.PredictorNames)));
-    mdlh(idx).vif=diag(inv(r0)); % VIF in training dataset
+    mdlh(end).vif=diag(inv(r0)); % VIF in training dataset
     
     % test performance on test dataset
     [ypred, yci]=predict(mdl, test(:, varidx));
-    mdlh(idx).test=[test.madrs1 ypred yci];
+    mdlh(end).test=[test.madrs1 ypred yci];
     r=corrcoef(test.madrs1, ypred);
     r0=corrcoef(table2array(test(:, mdl.PredictorNames)));
-    mdlh(idx).testp=[r(2)^2 sqrt(mean((test.madrs1-ypred).^2))];
-    mdlh(idx).tvif=diag(inv(r0)); % VIF in test dataset
-    mdlh(idx).precision=[sum(abs(diff(mdlh(idx).test(:, 1:2), 1, 2))<1); sum(abs(diff(mdlh(idx).test(:, 1:2), 1, 2))<2);...
-        sum(abs(diff(mdlh(idx).test(:, 1:2), 1, 2))<3); sum(abs(diff(mdlh(idx).test(:, 1:2), 1, 2))<4);...
-        sum(abs(diff(mdlh(idx).test(:, 1:2), 1, 2))<5)]/12;
-    mdlh(idx).auc=sum(mdlh(idx).precision);
-    mdlh(idx).slope=polyfit(test.madrs1, ypred, 1);
+    mdlh(end).testp=[r(2)^2 sqrt(mean((test.madrs1-ypred).^2))];
+    mdlh(end).tvif=diag(inv(r0)); % VIF in test dataset
+    mdlh(end).precision=[sum(abs(diff(mdlh(end).test(:, 1:2), 1, 2))<1); sum(abs(diff(mdlh(end).test(:, 1:2), 1, 2))<2);...
+        sum(abs(diff(mdlh(end).test(:, 1:2), 1, 2))<3); sum(abs(diff(mdlh(end).test(:, 1:2), 1, 2))<4);...
+        sum(abs(diff(mdlh(end).test(:, 1:2), 1, 2))<5)]/length(test.madrs1);
+    mdlh(end).auc=sum(mdlh(end).precision);
+    mdlh(end).slope=polyfit(test.madrs1, ypred, 1);
     
-end
-toc
+end % train next model
 delete(prg); % kill progress bar
+end % next 
+toc
+
+% crop out first line
+mdlh=mdlh(2:end);
+for idx=1:length(mdlh)
+    mvif(idx)=max(mdlh(idx).vif); % get max VIF from each model
+end
 a=reshape([mdlh.performance], 2, [])'; % [Rsq RMSE] train
 b=reshape([mdlh.testp], 2, [])'; % [Rsq RMSE] test
 
-% display global performance train -> test
-% figure, plot(a(:, 2), a(:, 1), 'bo', b(:, 2), b(:, 1), 'ro'); grid on;
-% set(gca, 'ylim', [0 1]); title('train -> test');
-% 
-% % display comparative performance RMSE test vs. RMSE train
-% figure, plot(a(:, 2), b(:, 2), 'bo'); box on; grid on; 
-% xlabel('RMSE train'), ylabel('RMSE test');
-% 
-% % focus on relevant region in the plot above
-% figure, plot(a(:, 2), b(:, 2), 'bo'); box on; grid on; 
-% xlabel('RMSE train'), ylabel('RMSE test');
-% xlim([0 range(train.madrs1)/2]), ylim([0 range(test.madrs1)/2])%, yticks(0:1:4), yticks(0:1:4)
+% identify models with acceptable accuracy RMSE<3 and precision
+% R-square>0.5 and VIF<5 in train dataset; and RMSE<3 and R-square>.576 in test
+% dataset
 
-% identify models with acceptable accuracy RMSE<3
-sidx=find(b(:, 2)<3); % find the models
-[fv, ~, ia]=unique([mdlh(sidx).varsin]); % get variables involved
+sidx=all([mvif(:)<5 a(:, 2)<=3 a(:, 1)>=.5 b(:, 2)<=3 b(:, 1)>=.576^2], 2); % find the models
+[fv, ~, ia]=unique([cat(1, mdlh(sidx).varsin)]); % get variables involved
 
 % put in table and sort by occurrence
 t=table(fv, accumarray(ia, 1), 'variablenames', {'predictor', 'occurrence'});
 t=sortrows(t, 'occurrence', 'descend'); 
-t.occurrence=t.occurrence/length(sidx); % show as percentage occurrence across models
+t.occurrence=t.occurrence/sum(sidx); % show as percentage occurrence across models
 
 % clean up 
-clear fv ia idx mdl prg r r0 varidx varsel yci ypred 
+clear fv ia idx nidx mdl prg r r0 varidx varsel yci ypred 
