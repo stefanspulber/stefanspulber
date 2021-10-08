@@ -1,5 +1,5 @@
 - 👋 Hi, I’m @stefanspulber
-- 👀 I’m interested in analysis of patterns of activity and circadian rhythms
+- 👀 I like clocks
 - 📫 stefan.spulber@ki.se
 
 <!---
