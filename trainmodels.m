@@ -51,44 +51,6 @@ imagesc(corrcoef(table2array(trainf(:, varidx)))), colormap(corrcmap'), axis equ
 set(gca, 'clim', [-1 1], 'ytick', 1:length(varidx), 'yticklabel', lbls, 'xtick', 1:length(varidx), 'xticklabel', lbls, 'xticklabelrotation', 90, 'xaxislocation', 'top');
 % set(testmat,  'clim', [-1 1], 'ytick', 1:length(varidx), 'yticklabel', lbls, 'xtick', 1:length(varidx), 'xticklabel', lbls, 'xticklabelrotation', 90, 'xaxislocation', 'top');
 
-%% train madrs12
-clc, tic, disp('Working...')
-varidx=[4 9:23 25 26 28:30];
-% varidx=[ 9:23 34 35];
-for idx=1:10
-    mdl=stepwiselm(trainf, 'ResponseVar', 'madrs12', 'PredictorVars', varidx, 'Criterion', 'aic', 'NSteps', idx, 'Lower', 'constant', 'Upper', 'interactions', 'Verbose', 0);
-    % collect info on trained model
-    mdlh(idx).varsin=mdl.PredictorNames; 
-    mdlh(idx).weights=mdl.Coefficients; 
-    mdlh(idx).performance=[mdl.Rsquared.Adjusted mdl.RMSE];
-    
-    % test performance on ket dataset
-    mdlh(idx).test=[test.madrs12 feval(mdl, test(:, varidx))];
-    r=corrcoef(test.madrs12, feval(mdl, test(:, varidx)));
-    mdlh(idx).testp=[r(2)^2 sqrt(mean((test.madrs12-feval(mdl, test(:, varidx))).^2))];
-end
-toc
-
-a=reshape([mdlh.performance], 2, [])';
-b=reshape([mdlh.testp], 2, [])';
-figure, plot(a(:, 2), a(:, 1), 'bo', b(:, 2), b(:, 1), 'ro');
-legend({'trained', 'tested'});
-set(gca, 'ylim', [0 1]);
-
-%% plot correlation matrices madrs12
-varidx=[6 4 9:23 25 26 28:30]; % select predictors
-lbls=trainf.Properties.VariableNames(varidx); % get predictor names
-
-lim=1; ramp=100;
-corrcmap=[zeros(1, lim) linspace(0, 1, ramp) ones(1, 256-lim-ramp);...
-    zeros(1, lim) linspace(0, 1, ramp) ones(1, 256-2*lim-2*ramp) linspace(1, 0, ramp) zeros(1, lim);...
-    ones(1, 256-lim-ramp) linspace(1, 0, ramp) zeros(1, lim)];
-
-figure, 
-imagesc(corrcoef(table2array(trainf(:, varidx)))), colormap(gca, corrcmap'), axis equal tight
-set(gca, 'clim', [-1 1], 'ytick', 1:length(varidx), 'yticklabel', lbls, 'xtick', 1:length(varidx), 'xticklabel', lbls, 'xticklabelrotation', 90, 'xaxislocation', 'top');
-
-
 %% plot matrix of predictors 
 c=[linspace(0, 1, 128) ones(1, 128); linspace(0, 1, 128) linspace(1, 0, 128); ones(1, 128) linspace(1, 0, 128)]; % make colormap blue-gray-red
 [~, si]=sort(coefs1.RMSE, 'descend'); si=si([6:18 19 1:5]); % sort models by performance, then make look like Fig 2C
@@ -103,21 +65,6 @@ set(gca, 'clim', [-2 2], 'xtick', 1:length(varidx), 'xticklabels', coefs1.Proper
 subplot(1, 2, 2); imagesc(coefs1.intercept(si)), colormap(c'), colorbar, axis equal tight;
 set(gca, 'clim', [-150 150], 'ytick', [], 'xtick', []);
 
-%% try differences due to bin size in IS and IV
-tic
-rs=[1; unique(cumprod(perms(factor(1440)),2))]; % bin sizes for resampling
-op=struct; % prepare output structure
-
-for idx=1:length(cbt)
-    sp=find(cbt(idx).tdata(:, 1)==0, 1, 'first');
-    d=cbt(idx).tdata(sp:end, 2);
-    pp=idvar(d, 1440, rs);
-    op(idx).id=cbt(idx).ID; 
-    op(idx).iv=pp.iv(:, 2)'; 
-    op(idx).is=pp.is(:, 2)'; 
-    clear pp sp d 
-end
-toc 
 
 %% assess performance in dummy models 
 a=[29;30;37;24;32;28;27;24;25;28;35;25]; % observed scores
@@ -153,33 +100,6 @@ a=reshape([mdlh.performance], 2, [])';
 b=reshape([mdlh.testp], 2, [])';
 figure, plot(a(:, 2), a(:, 1), 'bo'); %, b(:, 2), b(:, 1), 'ro');
 % legend({'trained', 'tested'});
-set(gca, 'ylim', [0 1]); xlim([0 8])
-ylabel 'adjRsquare'; xlabel 'RMSE'
-
-%% train madrs1 on depresjon madrs1>19
-clc, tic, disp('Working...')
-
-varidx=[ 4 7:21];
-for idx=1:7
-    mdl=stepwiselm(t, 'ResponseVar', 'madrs1', 'PredictorVars', varidx, 'Criterion', 'aic', 'NSteps', idx, 'Lower', 'constant', 'Upper', 'interactions', 'Verbose', 0);
-    % collect info on trained model
-    mdlh(idx).varsin=mdl.PredictorNames; 
-    mdlh(idx).weights=mdl.Coefficients; 
-    mdlh(idx).performance=[mdl.Rsquared.Adjusted mdl.RMSE];
-    r0=corrcoef(table2array(t(:, mdl.PredictorNames)));
-    mdlh(idx).vif=diag(inv(r0)); % VIF in training dataset
-    mdlh(idx).train=[t.madrs1 mdl.Fitted];
-    % test performance on cbt dataset
-    mdlh(idx).test=[train.madrs1 feval(mdl, train(:, varidx)) ];
-    r=corrcoef(train.madrs1, feval(mdl, train(:, varidx)));
-    mdlh(idx).testp=[r(2)^2 sqrt(mean((train.madrs1-feval(mdl, train(:, varidx))).^2))];
-end
-toc
-
-a=reshape([mdlh.performance], 2, [])';
-b=reshape([mdlh.testp], 2, [])';
-figure, plot(a(:, 2), a(:, 1), 'bo', b(:, 2), b(:, 1), 'ro');
-legend({'trained', 'tested'});
 set(gca, 'ylim', [0 1]); xlim([0 8])
 ylabel 'adjRsquare'; xlabel 'RMSE'
 
